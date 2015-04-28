@@ -22,8 +22,11 @@ class EA(object):
 
 class SimpleEA(EA):
 	def _vary(self, entities):
-		return entities
+		r = self.rng.uniform((entities.shape[0]/2,))
+		r = r < self.crossover_rate
 		
+		return entities
+
 	def __init__(self, fitnessFunction, selectionFunction):
 		"""
 		Initialize a simple EA algorithm class.
@@ -35,11 +38,12 @@ class SimpleEA(EA):
 
 		self.fitness = fitnessFunction
 		self.selection = selectionFunction
-		
-	def run(self, sel, generations = 100):
-		log("Compiling...")
 
-		# Initialize population and fitness
+		self.crossover_rate = 1
+
+		self.rng = RandomStreams()
+		
+	def run(self, generations = 100):
 		E = self.initialize_random_population()
 		F = np.zeros((E.shape[0]), dtype=theano.config.floatX)
 
@@ -70,12 +74,14 @@ class SimpleEA(EA):
 			
 			fitness()
 
+		end = time.time()
+
 		if theano.config.profile:
 			theano.printing.pydotprint(fitness, outfile="fitness.png")
 			theano.printing.pydotprint(select, outfile="select.png")
 			theano.printing.pydotprint(vary, outfile="vary.png")
 
-		return E.eval(), start
+		return E.eval(), start, end
 		
 if __name__ == "__main__":
 
@@ -100,9 +106,8 @@ if __name__ == "__main__":
 
 	ea = SimpleEA(fit, sel)
 
-	entities, start = ea.run(sel=sel)
+	entities, start, end = ea.run()
 	f = np.max(np.sum(entities, axis=1))
-	end = time.time()
 
 	logOK("Done!")
 	log("Max fitness: %i" % f)
