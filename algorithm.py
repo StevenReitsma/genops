@@ -1,5 +1,6 @@
 import theano
 import theano.tensor as T
+from theano.tensor.shared_randomstreams import RandomStreams
 from abc import ABCMeta, abstractmethod
 
 class EA(object):
@@ -10,7 +11,9 @@ class EA(object):
 
 class SimpleEA(EA):
 	def _vary(entities):
-		pass
+		r = self.rng.uniform((entities.shape[0]/2,))
+		r = r < self.crossover_rate
+		
 		
 	def __init__(self, fitnessFunction, selectionFunction):
 		"""
@@ -28,6 +31,7 @@ class SimpleEA(EA):
 		self.fitness = theano.function([entities, changes], fitnessFunction)
 		self.select = theano.function([entities, fitness], selectionFunction)
 		self.vary = theano.function([entities], self._vary)
+		self.rng = RandomStreams()
 		
 	def run(self, generations = 100):
 		E = self.initialize_random_population()
