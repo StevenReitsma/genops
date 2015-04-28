@@ -44,6 +44,8 @@ class SimpleEA(EA):
 		self.rng = RandomStreams()
 		
 	def run(self, generations = 100):
+		log("Compiling...")
+		
 		E = self.initialize_random_population()
 		F = np.zeros((E.shape[0]), dtype=theano.config.floatX)
 
