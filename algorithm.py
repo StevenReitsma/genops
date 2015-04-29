@@ -20,8 +20,15 @@ class EA(object):
 	def __init__(self):
 		self.rng = RandomStreams()
 
+		self.mutate_rate = 0
+		self.crossover_rate = 0
+
 	def crossover(self, e1, e2):
-		pass
+		# Generate random crossover point
+		xpoint = self.rng.random_integers(size = (1,), low = 0, high = e1.shape[0]-1)
+
+		return (T.concatenate(e1[:xpoint], e2[xpoint:]),
+		        T.concatenate(e2[:xpoint], e1[xpoint:]))
 
 	def mutate(self, e):
 		# Generate random bits
@@ -32,15 +39,9 @@ class EA(object):
 		return e
 	
 	def initialize_random_population(self):
-		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 100 bits
+		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
 
 class SimpleEA(EA):
-	def _vary(self, entities):
-		r = self.rng.uniform((entities.shape[0]/2,))
-		r = r < self.crossover_rate
-		
-		return entities
-
 	def __init__(self, fitnessFunction, selectionFunction):
 		"""
 		Initialize a simple EA algorithm class.
@@ -49,12 +50,19 @@ class SimpleEA(EA):
 		:param fitnessFunction: The fitness function that takes a matrix of entities and and outputs a vector of fitness values for the ids given in `changes`.
 		:param selectionFunction: The selection function that takes a matrix of entities and a vector of fitnesses and outputs a matrix of entities.
 		"""
+		super(SimpleEA, self).__init__()
 
 		self.fitness = fitnessFunction
 		self.selection = selectionFunction
 
 		self.crossover_rate = 1
 		self.mutate_rate = 0.1
+
+	def _vary(self, entities):
+		r = self.rng.uniform((entities.shape[0]/2,))
+		r = r < self.crossover_rate
+		
+		return entities
 		
 	def run(self, generations = 100):
 		log("Compiling...")
