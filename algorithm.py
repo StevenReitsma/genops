@@ -16,6 +16,20 @@ def log(text):
 
 class EA(object):
 	__metaclass__ = ABCMeta
+
+	def __init__(self):
+		self.rng = RandomStreams()
+
+	def crossover(self, e1, e2):
+		pass
+
+	def mutate(self, e):
+		# Generate random bits
+		r = self.rng.choice(size = (e.shape[0],), p = self.mutate_rate)
+
+		# Flip random bits
+		e[r.nonzero()] = (e[r.nonzero()] + 1) % 2
+		return e
 	
 	def initialize_random_population(self):
 		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 100 bits
@@ -40,8 +54,7 @@ class SimpleEA(EA):
 		self.selection = selectionFunction
 
 		self.crossover_rate = 1
-
-		self.rng = RandomStreams()
+		self.mutate_rate = 0.1
 		
 	def run(self, generations = 100):
 		log("Compiling...")
