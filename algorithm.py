@@ -26,9 +26,11 @@ class EA(object):
 	def crossover(self, e1, e2):
 		# Generate random crossover point
 		xpoint = self.rng.random_integers(size = (1,), low = 0, high = e1.shape[0]-1)
+		s1 = T.concatenate([T.ones(xpoint), T.zeros(e1.shape[0]-xpoint)])
+		s2 = T.concatenate([T.zeros(xpoint), T.ones(e1.shape[0]-xpoint)])
 
-		return (T.concatenate(e1[:xpoint], e2[xpoint:]),
-		        T.concatenate(e2[:xpoint], e1[xpoint:]))
+		return (T.concatenate([e1[s1.nonzero()], e2[s2.nonzero()]]),
+		        T.concatenate([e2[s1.nonzero()], e1[s2.nonzero()]]))
 
 	def mutate(self, e):
 		# Generate random bits
@@ -55,14 +57,27 @@ class SimpleEA(EA):
 		self.fitness = fitnessFunction
 		self.selection = selectionFunction
 
-		self.crossover_rate = 1
+		self.crossover_rate = 0.3
 		self.mutate_rate = 0.1
 
 	def _vary(self, entities):
-		r = self.rng.uniform((entities.shape[0]/2,))
-		r = r < self.crossover_rate
+		children = T.zeros_like(entities)
+		r = self.rng.uniform((entities.shape[0]/2,)) < self.crossover_rate
 		
-		return entities
+		def single_crossover(i, children, r, entities):
+			if r[i]:
+				self.crossover(entities[i-1], entities[i])
+				e1, e2 = self.crossover(entities[i-1], entities[i])
+				children = T.set_subtensor(children[i-1], e1)
+				children = T.set_subtensor(children[i], e2)
+			else:
+				children = T.set_subtensor(children[[i-1, i]], entities[[i-1, i]])
+			return children
+		
+		values, updates = theano.scan(fn=single_crossover, outputs_info=T.zeros_like(children), sequences=T.arange(1,entities.shape[0],2), non_sequences=[r,entities])
+		execute = theano.function(inputs=[r], outputs=values[-1], updates=updates)
+		children = execute(np.zeros(entities.get_value().shape[0]).astype(np.int8))
+		return children
 		
 	def run(self, generations = 100):
 		log("Compiling...")
