@@ -20,8 +20,9 @@ class EA(object):
 	def __init__(self):
 		self.rng = RandomStreams()
 
-		self.mutate_rate = 0
-		self.crossover_rate = 0
+		self.entity_mutate_rate = 0.1
+		self.bit_mutate_rate = 0.05
+		self.crossover_rate = 0.7
 
 	def crossover(self, e1, e2):
 		# Generate random crossover point
@@ -32,14 +33,14 @@ class EA(object):
 
 	def mutate(self, e):
 		# Generate random bits
-		r = self.rng.choice(size = (e.shape[0],), p = self.mutate_rate)
+		r = self.rng.choice(size = (e.shape[0],), p = self.bit_mutate_rate)
 
 		# Flip random bits
 		e[r.nonzero()] = (e[r.nonzero()] + 1) % 2
 		return e
 	
 	def initialize_random_population(self):
-		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
+		return np.random.randint(2, size = (10000, 10000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
 
 class SimpleEA(EA):
 	def __init__(self, fitnessFunction, selectionFunction):
@@ -76,7 +77,7 @@ class SimpleEA(EA):
 
 		# Create graphs
 		fitness_t = self.fitness(E)
-		select_t = self.selection(E, F)
+		select_t = self.selection(E, F, self.rng)
 		vary_t = self._vary(E)
 
 		# Compile functions
@@ -111,9 +112,8 @@ if __name__ == "__main__":
 	def fit(entities):
 		return T.sum(entities, axis=1)
 
-	def sel(entities, fitness):
+	def sel(entities, fitness, rng):
 		# Create random integers
-		rng = RandomStreams()
 		r = rng.random_integers(size = (entities.shape[0]*2,), low = 0, high = entities.shape[0]-1)
 
 		# Take randomly matched entities' fitnesses and reshape
@@ -132,6 +132,6 @@ if __name__ == "__main__":
 	entities, start, end = ea.run()
 	f = np.max(np.sum(entities, axis=1))
 
-	logOK("Done!")
+	logOK("Done.")
 	log("Max fitness: %i" % f)
 	log("Time taken: %.5f seconds" % (end-start))
