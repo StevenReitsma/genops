@@ -63,7 +63,7 @@ class SimpleEA(EA):
 		entity_pair_range = T.arange(1, entities.shape[0], 2)
 		r = self.rng.choice(size = (entities.shape[0] / 2,), p = [1-self.crossover_rate, self.crossover_rate])
 	
-		values, updates = theano.scan(fn=single_crossover, sequences=[entity_pair_range, r], non_sequences=[entities], profile=True)
+		values, updates = theano.scan(fn=single_crossover, sequences=[entity_pair_range, r], non_sequences=[entities])
 
 		return updates[entities]
 
