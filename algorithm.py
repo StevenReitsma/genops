@@ -4,6 +4,7 @@ from theano.tensor.shared_randomstreams import RandomStreams
 import numpy as np
 import time
 from abc import ABCMeta
+import sys
 
 def logOK(text):
 	print time.strftime('%H:%M:%S') + ": " + '\033[92m' + text + '\033[0m'
@@ -23,26 +24,9 @@ class EA(object):
 		self.entity_mutate_rate = 0.1
 		self.bit_mutate_rate = 0.05
 		self.crossover_rate = 0.7
-
-	def crossover(self, e1, e2):
-		# Generate random crossover point
-		xpoint = self.rng.random_integers(size = (1,), low = 0, high = e1.shape[0]-1)
-		s1 = T.concatenate([T.ones(xpoint), T.zeros(e1.shape[0]-xpoint)])
-		s2 = T.concatenate([T.zeros(xpoint), T.ones(e1.shape[0]-xpoint)])
-
-		return (T.concatenate([e1[s1.nonzero()], e2[s2.nonzero()]]),
-		        T.concatenate([e2[s1.nonzero()], e1[s2.nonzero()]]))
-
-	def mutate(self, e):
-		# Generate random bits
-		r = self.rng.choice(size = (e.shape[0],), p = self.bit_mutate_rate)
-
-		# Flip random bits
-		e[r.nonzero()] = (e[r.nonzero()] + 1) % 2
-		return e
 	
 	def initialize_random_population(self):
-		return np.random.randint(2, size = (1000, 100)).astype(theano.config.floatX) # 1000 entities, 1000 bits
+		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
 
 class SimpleEA(EA):
 	def __init__(self, fitnessFunction, selectionFunction):
@@ -58,30 +42,75 @@ class SimpleEA(EA):
 		self.fitness = fitnessFunction
 		self.selection = selectionFunction
 
-		self.crossover_rate = 1
-		self.mutate_rate = 0.9
-
-	def _vary(self, entities):
-		r = self.rng.uniform((entities.shape[0]/2,)) < self.crossover_rate
-		
-		def single_crossover(i, r_i):
-			if r_i:
+	def cross(self, entities):
+		"""
+		TODO:
+		* Really slow, optimization needed.
+		"""
+		def single_crossover(i, r_i, entities):
+			if T.gt(r_i, 0):
 				e1 = entities[i]
 				e2 = entities[i-1]
-				x = 3
-				e3 = T.concatenate([e1[:x], e2[x:]])
-				e4 = T.concatenate([e2[:x], e1[x:]])
+
+				xpoint = self.rng.random_integers(size = (1,), low = 0, high = entities.shape[1]-1)[0]
+
+				e3 = T.concatenate([e1[:xpoint], e2[xpoint:]])
+				e4 = T.concatenate([e2[:xpoint], e1[xpoint:]])
 				return {entities: T.set_subtensor(T.set_subtensor(entities[[i-1,i]], e3)[i], e4)}
 			else:
 				return {}
-				
-		values, updates = theano.scan(fn=single_crossover, sequences=[T.arange(1,entities.shape[0],2), self.rng.uniform((entities.shape[0]/2,)) < self.crossover_rate])
+
+		entity_pair_range = T.arange(1, entities.shape[0], 2)
+		r = self.rng.choice(size = (entities.shape[0] / 2,), p = [1-self.crossover_rate, self.crossover_rate])
+	
+		values, updates = theano.scan(fn=single_crossover, sequences=[entity_pair_range, r], non_sequences=[entities], profile=True)
+
+		return updates[entities]
+
+	def mutation(self, entities):
+		"""
+		TODO:
+		* Results not as good as fast_mutation, while this function is more intuitive, why?
+		* Slow, need to optimize.
+		"""
+		def single_mutate(i, entities):
+			e = entities[i]
+			r = self.rng.choice(size = (1,), p = [1-self.entity_mutate_rate, self.entity_mutate_rate])
+
+			# Mutate entity with certain probability
+			if T.gt(r, 0):
+				# Generate random bits
+				rb = self.rng.choice(size = (entities.shape[1],), p = [1-self.bit_mutate_rate, self.bit_mutate_rate])
+
+				# Flip random bits
+				e = T.set_subtensor(e[rb.nonzero()], (e[rb.nonzero()] + 1) % 2)
+
+			return e
+
+		entities, _ = theano.map(fn = single_mutate, sequences=[T.arange(entities.shape[0])], non_sequences=[entities])
+		return entities
+
+	def fast_mutation(self, entities):
+		"""
+		Randomly flips bits in the population matrix.
+
+		TODO:
+		* Contains 1 HostFromGpu
+		* Contains 1 GpuFromHost
+		"""
+		p = self.bit_mutate_rate * self.entity_mutate_rate
+		r = self.rng.choice(size = entities.shape, p = [1-p, p])
+
+		non_zero_indices = r.nonzero()
+
+		to_be_changed = entities[non_zero_indices]
+		changed_to = (to_be_changed + 1) % 2
+
+		entities = T.set_subtensor(to_be_changed, changed_to)
+
+		return entities
 		
-		r = self.rng.choice(size = entities.shape, p = [self.mutate_rate, 1 - self.mutate_rate])
-		return T.set_subtensor(updates[entities][r.nonzero()], (updates[entities][r.nonzero()] + 1) % 2)
-#		return T.set_subtensor(        entities [r.nonzero()], (        entities [r.nonzero()] + 1) % 2)
-		
-	def run(self, generations = 500):
+	def run(self, generations = 200):
 		log("Compiling...")
 		
 		E = self.initialize_random_population()
@@ -94,12 +123,14 @@ class SimpleEA(EA):
 		# Create graphs
 		fitness_t = self.fitness(E)
 		select_t = self.selection(E, F, self.rng)
-		vary_t = self._vary(E)
+		mutate_t = self.fast_mutation(E)
+		crossover_t = self.cross(E)
 
 		# Compile functions
 		fitness = theano.function([], [], updates = [(F, fitness_t)])
 		select = theano.function([], [], updates = [(E, select_t)])
-		vary = theano.function([], [], updates = [(E, vary_t)])
+		mutate = theano.function([], [], updates = [(E, mutate_t)])
+		crossover = theano.function([], [], updates = [(E, crossover_t)])
 
 		logOK("Compilation successfully completed.")
 		log("Running algorithm...")
@@ -109,22 +140,28 @@ class SimpleEA(EA):
 		fitness()
 		
 		for i in range(generations):
-			print "it #", i
 			select()
-			#print "Before", E.get_value().sum()
-			print "Fitness", np.max(F.get_value())
-			vary()
+			crossover()
+			mutate()
 			
 			fitness()
+
+			if theano.config.profile:
+				log("Fitness: " + str(np.max(F.get_value())))
+
+			# Early stopping
+			if np.max(F.get_value()) == 100:
+				break
 
 		end = time.time()
 
 		if theano.config.profile:
 			theano.printing.pydotprint(fitness, outfile="fitness.png")
 			theano.printing.pydotprint(select, outfile="select.png")
-			theano.printing.pydotprint(vary, outfile="vary.png")
+			theano.printing.pydotprint(mutate, outfile="mutate.png")
+			theano.printing.pydotprint(crossover, outfile="cross.png")
 
-		return E.eval(), start, end
+		return E.eval(), start, end, i+1
 		
 if __name__ == "__main__":
 
@@ -132,6 +169,10 @@ if __name__ == "__main__":
 		return T.sum(entities, axis=1)
 
 	def sel(entities, fitness, rng):
+		"""
+		TODO:
+		* Contains 1 HostFromGpu (argmax)
+		"""
 		# Create random integers
 		r = rng.random_integers(size = (entities.shape[0]*2,), low = 0, high = entities.shape[0]-1)
 
@@ -148,9 +189,26 @@ if __name__ == "__main__":
 
 	ea = SimpleEA(fit, sel)
 
-	entities, start, end = ea.run()
+	if len(sys.argv) > 1 and sys.argv[1] == "benchmark":
+		times = 20
+	else:
+		times = 1
+
+	total_time = 0
+	total_iterations = 0
+
+	for i in range(times):
+		entities, start, end, iterations = ea.run()
+		total_time += end-start
+		total_iterations += iterations
+
+	avg_time = total_time / float(times)
+	avg_iterations = total_iterations / float(times)
+
 	f = np.max(np.sum(entities, axis=1))
 
 	logOK("Done.")
+	log("Device: %s" % theano.config.device)
 	log("Max fitness: %i" % f)
-	log("Time taken: %.5f seconds" % (end-start))
+	log("Time taken: %.5f seconds" % avg_time)
+	log("Iterations taken: %.1f" % avg_iterations)
