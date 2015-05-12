@@ -3,7 +3,7 @@ import theano.tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
 import numpy as np
 import time
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 
 def logOK(text):
 	print time.strftime('%H:%M:%S') + ": " + '\033[92m' + text + '\033[0m'
@@ -42,7 +42,7 @@ class EA(object):
 		return e
 	
 	def initialize_random_population(self):
-		return np.random.randint(2, size = (10000, 10000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
+		return np.random.randint(2, size = (1000, 100)).astype(theano.config.floatX) # 1000 entities, 1000 bits
 
 class SimpleEA(EA):
 	def __init__(self, fitnessFunction, selectionFunction):
@@ -58,29 +58,30 @@ class SimpleEA(EA):
 		self.fitness = fitnessFunction
 		self.selection = selectionFunction
 
-		self.crossover_rate = 0.3
-		self.mutate_rate = 0.1
+		self.crossover_rate = 1
+		self.mutate_rate = 0.9
 
 	def _vary(self, entities):
-		children = T.zeros_like(entities)
 		r = self.rng.uniform((entities.shape[0]/2,)) < self.crossover_rate
 		
-		def single_crossover(i, children, r, entities):
-			if r[i]:
-				self.crossover(entities[i-1], entities[i])
-				e1, e2 = self.crossover(entities[i-1], entities[i])
-				children = T.set_subtensor(children[i-1], e1)
-				children = T.set_subtensor(children[i], e2)
+		def single_crossover(i, r_i):
+			if r_i:
+				e1 = entities[i]
+				e2 = entities[i-1]
+				x = 3
+				e3 = T.concatenate([e1[:x], e2[x:]])
+				e4 = T.concatenate([e2[:x], e1[x:]])
+				return {entities: T.set_subtensor(T.set_subtensor(entities[[i-1,i]], e3)[i], e4)}
 			else:
-				children = T.set_subtensor(children[[i-1, i]], entities[[i-1, i]])
-			return children
+				return {}
+				
+		values, updates = theano.scan(fn=single_crossover, sequences=[T.arange(1,entities.shape[0],2), self.rng.uniform((entities.shape[0]/2,)) < self.crossover_rate])
 		
-		values, updates = theano.scan(fn=single_crossover, outputs_info=T.zeros_like(children), sequences=T.arange(1,entities.shape[0],2), non_sequences=[r,entities])
-		execute = theano.function(inputs=[r], outputs=values[-1], updates=updates)
-		children = execute(np.zeros(entities.get_value().shape[0]).astype(np.int8))
-		return children
+		r = self.rng.choice(size = entities.shape, p = [self.mutate_rate, 1 - self.mutate_rate])
+		return T.set_subtensor(updates[entities][r.nonzero()], (updates[entities][r.nonzero()] + 1) % 2)
+#		return T.set_subtensor(        entities [r.nonzero()], (        entities [r.nonzero()] + 1) % 2)
 		
-	def run(self, generations = 100):
+	def run(self, generations = 500):
 		log("Compiling...")
 		
 		E = self.initialize_random_population()
@@ -108,7 +109,10 @@ class SimpleEA(EA):
 		fitness()
 		
 		for i in range(generations):
+			print "it #", i
 			select()
+			#print "Before", E.get_value().sum()
+			print "Fitness", np.max(F.get_value())
 			vary()
 			
 			fitness()
