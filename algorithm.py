@@ -47,23 +47,31 @@ class SimpleEA(EA):
 		TODO:
 		* Really slow, optimization needed.
 		"""
-		def single_crossover(i, r_i, entities):
+		def single_crossover(i, r_i, xpoint, entities):
 			if T.gt(r_i, 0):
+				# Parents
 				e1 = entities[i]
 				e2 = entities[i-1]
 
-				xpoint = self.rng.random_integers(size = (1,), low = 0, high = entities.shape[1]-1)[0]
-
+				# Children
 				e3 = T.concatenate([e1[:xpoint], e2[xpoint:]])
 				e4 = T.concatenate([e2[:xpoint], e1[xpoint:]])
-				return {entities: T.set_subtensor(T.set_subtensor(entities[[i-1,i]], e3)[i], e4)}
+
+				# Replace parents with children
+				new_e = T.stack(e3, e4)
+				return {entities: T.set_subtensor(entities[i-1:i+1], new_e)}
 			else:
 				return {}
 
 		entity_pair_range = T.arange(1, entities.shape[0], 2)
+
+		# Generate crossover bools once to save calls, use as sequence
 		r = self.rng.choice(size = (entities.shape[0] / 2,), p = [1-self.crossover_rate, self.crossover_rate])
+
+		# Generate crossover points once
+		xpoints = self.rng.random_integers(size = (entities.shape[0] / 2,), low = 0, high = entities.shape[1]-1)
 	
-		values, updates = theano.scan(fn=single_crossover, sequences=[entity_pair_range, r], non_sequences=[entities])
+		values, updates = theano.scan(fn=single_crossover, sequences=[entity_pair_range, r, xpoints], non_sequences=[entities], name="crossover", profile=theano.config.profile)
 
 		return updates[entities]
 
@@ -110,7 +118,7 @@ class SimpleEA(EA):
 
 		return entities
 		
-	def run(self, generations = 200):
+	def run(self, generations = 50):
 		log("Compiling...")
 		
 		E = self.initialize_random_population()
@@ -159,7 +167,7 @@ class SimpleEA(EA):
 			theano.printing.pydotprint(fitness, outfile="fitness.png")
 			theano.printing.pydotprint(select, outfile="select.png")
 			theano.printing.pydotprint(mutate, outfile="mutate.png")
-			theano.printing.pydotprint(crossover, outfile="cross.png")
+			theano.printing.pydotprint(crossover, outfile="cross.png", scan_graphs = True)
 
 		return E.eval(), start, end, i+1
 		
