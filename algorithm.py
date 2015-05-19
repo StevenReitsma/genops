@@ -26,7 +26,7 @@ class EA(object):
 		self.crossover_rate = 0.7
 	
 	def initialize_random_population(self):
-		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
+		return np.random.randint(2, size = (10000, 1000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
 
 class SimpleEA(EA):
 	def __init__(self, fitnessFunction, selectionFunction):
@@ -41,6 +41,21 @@ class SimpleEA(EA):
 
 		self.fitness = fitnessFunction
 		self.selection = selectionFunction
+	
+	def cross_alt(self, entities):
+		n, m = entities.shape
+		pop = T.reshape(entities, (2, n*m/2))
+		xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
+		
+		def choice_vector(xpoint, nbits):
+			return T.concatenate([T.zeros((xpoint,), dtype='uint8'), T.ones((nbits-xpoint,), dtype='uint8')])
+		
+		values, updates = theano.map(fn=choice_vector, sequences=[xpoints], non_sequences=[m], name='Choice Vector')
+		
+		a = T.reshape(values, (n*m/2,))
+		pop = T.concatenate([T.choose(a, pop), T.choose(1-a, pop)])
+		pop = T.reshape(pop, (n,m))
+		return pop
 
 	def cross(self, entities):
 		"""
@@ -60,6 +75,18 @@ class SimpleEA(EA):
 				# Replace parents with children
 				new_e = T.stack(e3, e4)
 				return {entities: T.set_subtensor(entities[i-1:i+1], new_e)}
+			else:
+				return {}
+		
+		def single_crossover2(i, r_i, xpoint, entities):
+			if T.gt(r_i, 0):
+				# Parents
+				w = entities.shape[1]
+				p = entities[[i-1,i]]
+				s = T.concatenate([T.zeros((xpoint,), dtype='int32'), T.ones((w-xpoint,), dtype='int32')])
+				s2 = 1 - s
+				c = T.stack(T.choose(s,p), T.choose(s2,p))
+				return {entities: T.set_subtensor(entities[[i-1,i]], c)}
 			else:
 				return {}
 
@@ -112,7 +139,7 @@ class SimpleEA(EA):
 		non_zero_indices = r.nonzero()
 
 		to_be_changed = entities[non_zero_indices]
-		changed_to = (to_be_changed + 1) % 2
+		changed_to = 1 - to_be_changed
 
 		entities = T.set_subtensor(to_be_changed, changed_to)
 
@@ -132,7 +159,7 @@ class SimpleEA(EA):
 		fitness_t = self.fitness(E)
 		select_t = self.selection(E, F, self.rng)
 		mutate_t = self.fast_mutation(E)
-		crossover_t = self.cross(E)
+		crossover_t = self.cross_alt(E)
 
 		# Compile functions
 		fitness = theano.function([], [], updates = [(F, fitness_t)])
