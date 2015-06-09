@@ -17,19 +17,19 @@ def evalOneMax(individual):
 
 toolbox.register("evaluate", evalOneMax)
 toolbox.register("mate", tools.cxTwoPoint)
-toolbox.register("mutate", tools.mutFlipBit, indpb=0.1)
+toolbox.register("mutate", tools.mutFlipBit, indpb=0.03)
 toolbox.register("select", tools.selTournament, tournsize=2)
 
 population = toolbox.population(n=1000)
 
 start = time.time()
-NGEN=50
+NGEN=5000
 for gen in range(NGEN):
     offspring = algorithms.varAnd(population, toolbox, cxpb=0.7, mutpb=0.05)
     fits = toolbox.map(toolbox.evaluate, offspring)
     for fit, ind in zip(fits, offspring):
         ind.fitness.values = fit
-    print np.max(fits)
+    print "Iteration %i, fitness: %i" % (gen, np.max(fits))
     population = toolbox.select(offspring, k=len(population))
 top10 = tools.selBest(population, k=10)
 end = time.time()
