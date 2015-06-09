@@ -46,7 +46,7 @@ class ChooseOp(theano.Op):
 		mod = SourceModule("""
 		__global__ void choose(float *dest, float *a, float *b, float *c, int N, int m) {
 			const int i = threadIdx.x + blockIdx.x * blockDim.x;
-			const int gene = __float2int_rd(i/m);
+			const int gene = i/m;
 			if (i < N) {
 				if (i%m < a[gene]) {
 					dest[i] = b[i];
