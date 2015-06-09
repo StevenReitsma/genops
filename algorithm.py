@@ -1,6 +1,7 @@
 import theano
 import theano.tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
+from theano.sandbox.cuda.rng_curand import CURAND_RandomStreams
 import numpy as np
 import theano.misc.pycuda_init
 import theano.sandbox.cuda as cuda
@@ -73,6 +74,11 @@ class EA(object):
 	def __init__(self):
 		self.rng = RandomStreams()
 
+		if 'gpu' in theano.config.device:
+			self.fast_rng = CURAND_RandomStreams(seed = 42)
+		else:
+			self.fast_rng = None
+
 		self.entity_mutate_rate = 0.1
 		self.bit_mutate_rate = 0.05
 		self.crossover_rate = 0.7
@@ -85,7 +91,7 @@ class SimpleEA(EA):
 		"""
 		Initialize a simple EA algorithm class.
 		Creating the SimpleEA object compiles the needed Theano functions.
-		
+
 		:param fitnessFunction: The fitness function that takes a matrix of entities and and outputs a vector of fitness values for the ids given in `changes`.
 		:param selectionFunction: The selection function that takes a matrix of entities and a vector of fitnesses and outputs a matrix of entities.
 		"""
@@ -111,7 +117,12 @@ class SimpleEA(EA):
 	def cross(self, entities):
 		n, m = entities.shape
 		pop = T.reshape(entities, (2, n*m/2))
-		xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
+
+		if self.fast_rng is None:
+			xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
+		else:
+			xpoints = self.fast_rng.uniform(size = (n / 2,), low = 0, high = m-1)
+			xpoints = xpoints.astype('int32')
 		
 		def choice_vector(xpoint, nbits):
 			return T.concatenate([T.zeros((xpoint,), dtype='uint8'), T.ones((nbits-xpoint,), dtype='uint8')])
@@ -123,13 +134,17 @@ class SimpleEA(EA):
 		pop = T.reshape(pop, (n,m))
 		return pop
 
-	def tournament_selection(self, entities, fitness, rng):
+	def tournament_selection(self, entities, fitness):
 		"""
 		TODO:
 		* Contains 1 HostFromGpu (argmax)
 		"""
 		# Create random integers
-		r = rng.random_integers(size = (entities.shape[0]*2,), low = 0, high = entities.shape[0]-1)
+		if self.fast_rng is None:
+			r = self.rng.random_integers(size = (entities.shape[0]*2,), low = 0, high = entities.shape[0]-1)
+		else:
+			r = self.fast_rng.uniform(size = (entities.shape[0]*2,), low = 0, high = entities.shape[0]-1)
+			r = r.astype('int32')
 
 		# Take randomly matched entities' fitnesses and reshape
 		chosen_f = fitness[r].reshape((2, entities.shape[0]))
@@ -151,7 +166,12 @@ class SimpleEA(EA):
 		* Contains 1 GpuFromHost
 		"""
 		p = self.bit_mutate_rate * self.entity_mutate_rate
-		r = self.rng.choice(size = entities.shape, p = [1-p, p])
+
+		if self.fast_rng is None:
+			r = self.rng.choice(size = entities.shape, p = [1-p, p])
+		else:
+			r = self.fast_rng.uniform(size = entities.shape)
+			r = r < p
 
 		non_zero_indices = r.nonzero()
 
@@ -174,7 +194,7 @@ class SimpleEA(EA):
 
 		# Create graphs
 		fitness_t = self.fitness(E)
-		select_t = self.tournament_selection(E, F, self.rng)
+		select_t = self.tournament_selection(E, F)
 		mutate_t = self.fast_mutation(E)
 		crossover_t = self.cross(E)
 
