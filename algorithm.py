@@ -79,7 +79,7 @@ class EA(object):
 		else:
 			self.fast_rng = None
 
-		self.entity_mutate_rate = 0.1
+		self.entity_mutate_rate = 0.03
 		self.bit_mutate_rate = 0.05
 		self.crossover_rate = 0.7
 	
@@ -102,6 +102,8 @@ class SimpleEA(EA):
 	def cross(self, entities):
 		n, m = entities.shape
 		pop = T.reshape(entities, (2, n*m/2))
+
+		crosslength = T.cast(self.crossover_rate * n * m / 2, 'int32')
 		
 		if self.fast_rng is None:
 			xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
@@ -110,9 +112,9 @@ class SimpleEA(EA):
 			xpoints = xpoints.astype('int32')
 			xpoints = xpoints.astype('float32')
 		
-		c1 = choose(xpoints, pop[0,:], pop[1,:])
-		c2 = choose(xpoints, pop[1,:], pop[0,:])
-		return T.reshape(T.concatenate([c1, c2]), (n,m))
+		c1 = choose(xpoints, pop[0,:crosslength], pop[1,:crosslength])
+		c2 = choose(xpoints, pop[1,:crosslength], pop[0,:crosslength])
+		return T.reshape(T.concatenate([c1, pop[0, crosslength:], c2, pop[1, crosslength:]]), (n,m))
 
 	def tournament_selection(self, entities, fitness):
 		"""
@@ -166,6 +168,10 @@ class SimpleEA(EA):
 		log("Compiling...")
 		
 		E = self.initialize_random_population()
+
+		n_entities = E.shape[0]
+		n_bits = E.shape[1]
+
 		F = np.zeros((E.shape[0]), dtype=theano.config.floatX)
 
 		# Change these to shared variables
@@ -195,14 +201,14 @@ class SimpleEA(EA):
 			select()
 			crossover()
 			mutate()
-			
+
 			fitness()
 
 			if theano.config.profile:
 				log("Fitness: " + str(np.max(F.get_value())))
 
 			# Early stopping
-			if np.max(F.get_value()) == 100:
+			if np.max(F.get_value()) == n_entities:
 				break
 
 		end = time.time()
@@ -231,7 +237,7 @@ if __name__ == "__main__":
 	total_iterations = 0
 
 	for i in range(times):
-		entities, start, end, iterations = ea.run()
+		entities, start, end, iterations = ea.run(generations = 1500)
 		total_time += end-start
 		total_iterations += iterations
 
