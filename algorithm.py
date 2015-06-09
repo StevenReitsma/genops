@@ -36,17 +36,17 @@ class ChooseOp(theano.Op):
 			 cuda.basic_ops.as_cuda_ndarray_variable(choice1))
 		c2 = cuda.basic_ops.gpu_contiguous(
 			 cuda.basic_ops.as_cuda_ndarray_variable(choice2))
-		assert a.dtype == "float32"
-		assert c1.dtype == "float32"
-		assert c2.dtype == "float32"
+		assert a.dtype == "int32"
+		assert c1.dtype == "int32"
+		assert c2.dtype == "int32"
 		out_ndim = c1.ndim
 		return theano.Apply(self, [a, c1, c2], [c1.type()])
 	
 	def make_thunk(self, node, storage_map, _, _2):
 		mod = SourceModule("""
-		__global__ void choose(float *dest, float *a, float *b, float *c, int N, int m) {
+		__global__ void choose(float *dest, int *a, int *b, int *c, int N, int m) {
 			const int i = threadIdx.x + blockIdx.x * blockDim.x;
-			const int gene = __float2int_rd(i/m);
+			const int gene = i/m;
 			if (i < N) {
 				if (i%m < a[gene]) {
 					dest[i] = b[i];
@@ -102,13 +102,14 @@ class SimpleEA(EA):
 	def cross(self, entities):
 		n, m = entities.shape
 		pop = T.reshape(entities, (2, n*m/2))
+		pop = pop.astype('int32')
 		
 		if self.fast_rng is None:
 			xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
 		else:
 			xpoints = self.fast_rng.uniform(size = (n / 2,), low = 0, high = m-1)
 			xpoints = xpoints.astype('int32')
-			xpoints = xpoints.astype('float32')
+			#xpoints = xpoints.astype('float32')
 		
 		c1 = choose(xpoints, pop[0,:], pop[1,:])
 		c2 = choose(xpoints, pop[1,:], pop[0,:])
