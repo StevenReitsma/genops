@@ -2,9 +2,15 @@ import theano
 import theano.tensor as T
 from theano.tensor.shared_randomstreams import RandomStreams
 import numpy as np
+import theano.misc.pycuda_init
+import theano.sandbox.cuda as cuda
 import time
 from abc import ABCMeta
 import sys
+
+import pycuda.autoinit
+import pycuda.driver as cuda_driver
+from pycuda.compiler import SourceModule
 
 def logOK(text):
 	print time.strftime('%H:%M:%S') + ": " + '\033[92m' + text + '\033[0m'
@@ -14,6 +20,52 @@ def logERROR(text):
 
 def log(text):
 	print time.strftime('%H:%M:%S') + ": " +  text
+
+class ChooseOp(theano.Op):
+	def __eq__(self, other):
+		return type(self) == type(other)
+	def __hash__(self):
+		return hash(type(self))
+	def __str__(self):
+		return self.__class__.__name__
+	def make_node(self, a, choice1, choice2):
+		a  = cuda.basic_ops.gpu_contiguous(
+			 cuda.basic_ops.as_cuda_ndarray_variable(a))
+		c1 = cuda.basic_ops.gpu_contiguous(
+			 cuda.basic_ops.as_cuda_ndarray_variable(choice1))
+		c2 = cuda.basic_ops.gpu_contiguous(
+			 cuda.basic_ops.as_cuda_ndarray_variable(choice2))
+		assert a.dtype == "float32"
+		assert c1.dtype == "float32"
+		assert c2.dtype == "float32"
+		out_ndim = c1.ndim
+		return theano.Apply(self, [a, c1, c2], [c1.type()])
+	
+	def make_thunk(self, node, storage_map, _, _2):
+		mod = SourceModule("""
+		__global__ void choose(float *dest, float *a, float *b, float *c, int N, int m) {
+			const int i = threadIdx.x + blockIdx.x * blockDim.x;
+			const int gene = __float2int_rd(i/m);
+			if (i < N) {
+				if (i%m < a[gene]) {
+					dest[i] = b[i];
+				} else {
+					dest[i] = c[i];
+				}
+			}
+		}""")
+		choose_cuda = mod.get_function("choose")
+		inputs  = [storage_map[v] for v in node.inputs]
+		outputs = [storage_map[v] for v in node.outputs]
+		def thunk():
+			z = outputs[0]
+			z[0] = cuda.CudaNdarray.zeros(inputs[1][0].shape)
+			grid = (int(np.ceil(inputs[1][0].size / 512.)), 1)
+			choose_cuda(z[0], inputs[0][0], inputs[1][0], inputs[2][0], 
+				np.intc(inputs[1][0].size), np.intc(inputs[1][0].size / inputs[0][0].size),
+				block=(512,1,1), grid=grid)
+		return thunk
+choose = ChooseOp()
 
 class EA(object):
 	__metaclass__ = ABCMeta
@@ -41,6 +93,21 @@ class SimpleEA(EA):
 
 		self.fitness = fitnessFunction
 	
+	def cross2(self, entities):
+		n, m = entities.shape
+		pop = T.reshape(entities, (2, n*m/2))
+		
+		xpoints = self.rng.random_integers(size = (n/2,), low = 0, high = m-1, dtype='float32')
+		"""
+		def choice_vector(xpoint, nbits):
+			return T.concatenate([T.zeros((xpoint,), dtype='float32'), T.ones((nbits-xpoint,), dtype='float32')])
+		values, updates = theano.map(fn=choice_vector, sequences=[xpoints], non_sequences=[m], name='choice_vector_building')
+		a  = T.reshape(values, (n*m/2,))
+"""		
+		c1 = choose(xpoints, pop[0,:], pop[1,:])
+		c2 = choose(xpoints, pop[1,:], pop[0,:])
+		return T.reshape(T.concatenate([c1, c2]), (n,m))
+
 	def cross(self, entities):
 		n, m = entities.shape
 		pop = T.reshape(entities, (2, n*m/2))
@@ -175,6 +242,6 @@ if __name__ == "__main__":
 
 	logOK("Done.")
 	log("Device: %s" % theano.config.device)
-	log("Max fitness: %i" % f)
+	log("Max fitness: %f" % f)
 	log("Time taken: %.5f seconds" % avg_time)
 	log("Iterations taken: %.1f" % avg_iterations)
