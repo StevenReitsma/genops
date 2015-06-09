@@ -99,40 +99,20 @@ class SimpleEA(EA):
 
 		self.fitness = fitnessFunction
 	
-	def cross2(self, entities):
-		n, m = entities.shape
-		pop = T.reshape(entities, (2, n*m/2))
-		
-		xpoints = self.rng.random_integers(size = (n/2,), low = 0, high = m-1, dtype='float32')
-		"""
-		def choice_vector(xpoint, nbits):
-			return T.concatenate([T.zeros((xpoint,), dtype='float32'), T.ones((nbits-xpoint,), dtype='float32')])
-		values, updates = theano.map(fn=choice_vector, sequences=[xpoints], non_sequences=[m], name='choice_vector_building')
-		a  = T.reshape(values, (n*m/2,))
-"""		
-		c1 = choose(xpoints, pop[0,:], pop[1,:])
-		c2 = choose(xpoints, pop[1,:], pop[0,:])
-		return T.reshape(T.concatenate([c1, c2]), (n,m))
-
 	def cross(self, entities):
 		n, m = entities.shape
 		pop = T.reshape(entities, (2, n*m/2))
-
+		
 		if self.fast_rng is None:
 			xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
 		else:
 			xpoints = self.fast_rng.uniform(size = (n / 2,), low = 0, high = m-1)
 			xpoints = xpoints.astype('int32')
+			xpoints = xpoints.astype('float32')
 		
-		def choice_vector(xpoint, nbits):
-			return T.concatenate([T.zeros((xpoint,), dtype='uint8'), T.ones((nbits-xpoint,), dtype='uint8')])
-		
-		values, updates = theano.map(fn=choice_vector, sequences=[xpoints], non_sequences=[m], name='choice_vector_building')
-		
-		a = T.reshape(values, (n*m/2,))
-		pop = T.concatenate([T.choose(a, pop), T.choose(1-a, pop)])
-		pop = T.reshape(pop, (n,m))
-		return pop
+		c1 = choose(xpoints, pop[0,:], pop[1,:])
+		c2 = choose(xpoints, pop[1,:], pop[0,:])
+		return T.reshape(T.concatenate([c1, c2]), (n,m))
 
 	def tournament_selection(self, entities, fitness):
 		"""
