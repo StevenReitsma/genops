@@ -29,29 +29,26 @@ class ChooseOp(theano.Op):
 		return hash(type(self))
 	def __str__(self):
 		return self.__class__.__name__
-	def make_node(self, a, choice1, choice2):
+	def make_node(self, a, choice1):
 		a  = cuda.basic_ops.gpu_contiguous(
 			 cuda.basic_ops.as_cuda_ndarray_variable(a))
 		c1 = cuda.basic_ops.gpu_contiguous(
 			 cuda.basic_ops.as_cuda_ndarray_variable(choice1))
-		c2 = cuda.basic_ops.gpu_contiguous(
-			 cuda.basic_ops.as_cuda_ndarray_variable(choice2))
 		assert a.dtype == "float32"
 		assert c1.dtype == "float32"
-		assert c2.dtype == "float32"
-		return theano.Apply(self, [a, c1, c2], [c1.type()])
+		return theano.Apply(self, [a, c1], [c1.type()])
 	
 	def make_thunk(self, node, storage_map, _, _2):
 		mod = SourceModule("""
-		__global__ void choose(float *dest, float *a, float *b, float *c, int N, int m) {
+		__global__ void choose(float *dest, float *a, float *b, int N, int m) {
 			const int i = threadIdx.x + blockIdx.x * blockDim.x;
 			const int gene = i/m;
 			if (i < N) {
 				if (i%m < a[gene]) {
 					dest[i]       = b[i];
-					dest[i + N/2] = c[i];
+					dest[i + N/2] = b[i + N/2];
 				} else {
-					dest[i]       = c[i];
+					dest[i]       = b[i + N/2];
 					dest[i + N/2] = b[i];
 				}
 			}
@@ -60,11 +57,14 @@ class ChooseOp(theano.Op):
 		inputs  = [storage_map[v] for v in node.inputs]
 		outputs = [storage_map[v] for v in node.outputs]
 		def thunk():
+			n = inputs[1][0].shape[1]  # Number of bit pairs
+			m = n / inputs[0][0].size  # Gene length
+			t = 512                    # Number of threads
 			z = outputs[0]
-			z[0] = cuda.CudaNdarray.zeros((inputs[1][0].shape[0],2))
-			grid = (int(np.ceil(inputs[1][0].size / 512.)), 1)
-			choose_cuda(z[0], inputs[0][0], inputs[1][0], inputs[2][0], 
-				np.intc(inputs[1][0].size), np.intc(inputs[1][0].size / inputs[0][0].size),
+			z[0] = cuda.CudaNdarray.zeros(inputs[1][0].shape)
+			grid = (int(np.ceil(n / 512.)), 1)
+			choose_cuda(z[0], inputs[0][0], inputs[1][0], 
+				np.intc(n), np.intc(m),
 				block=(512,1,1), grid=grid)
 		return thunk
 choose = ChooseOp()
@@ -80,7 +80,7 @@ class EA(object):
 		else:
 			self.fast_rng = None
 
-		self.entity_mutate_rate = 0.03
+		self.entity_mutate_rate = 0.003
 		self.bit_mutate_rate = 0.05
 		self.crossover_rate = 0.7
 	
@@ -113,10 +113,9 @@ class SimpleEA(EA):
 			xpoints = xpoints.astype('int32')
 			xpoints = xpoints.astype('float32')
 		
-		c1 = choose(xpoints, pop[0,:crosslength], pop[1,:crosslength])
+		c1 = choose(xpoints, pop[:,:crosslength])
 		c1 = T.reshape(c1, (2, crosslength))
-		c1 = T.concatenate([c1, pop[[0,1], crosslength:]], axis=1)
-		return T.reshape(c1, (n,m))
+		return T.reshape(T.concatenate([c1, pop[:, crosslength:]], axis=1), (n,m))
 
 	def tournament_selection(self, entities, fitness):
 		"""
