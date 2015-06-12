@@ -39,7 +39,6 @@ class ChooseOp(theano.Op):
 		assert a.dtype == "float32"
 		assert c1.dtype == "float32"
 		assert c2.dtype == "float32"
-		out_ndim = c1.ndim
 		return theano.Apply(self, [a, c1, c2], [c1.type()])
 	
 	def make_thunk(self, node, storage_map, _, _2):
@@ -49,9 +48,11 @@ class ChooseOp(theano.Op):
 			const int gene = i/m;
 			if (i < N) {
 				if (i%m < a[gene]) {
-					dest[i] = b[i];
+					dest[i]       = b[i];
+					dest[i + N/2] = c[i];
 				} else {
-					dest[i] = c[i];
+					dest[i]       = c[i];
+					dest[i + N/2] = b[i];
 				}
 			}
 		}""")
@@ -60,7 +61,7 @@ class ChooseOp(theano.Op):
 		outputs = [storage_map[v] for v in node.outputs]
 		def thunk():
 			z = outputs[0]
-			z[0] = cuda.CudaNdarray.zeros(inputs[1][0].shape)
+			z[0] = cuda.CudaNdarray.zeros((inputs[1][0].shape[0],2))
 			grid = (int(np.ceil(inputs[1][0].size / 512.)), 1)
 			choose_cuda(z[0], inputs[0][0], inputs[1][0], inputs[2][0], 
 				np.intc(inputs[1][0].size), np.intc(inputs[1][0].size / inputs[0][0].size),
@@ -113,8 +114,9 @@ class SimpleEA(EA):
 			xpoints = xpoints.astype('float32')
 		
 		c1 = choose(xpoints, pop[0,:crosslength], pop[1,:crosslength])
-		c2 = choose(xpoints, pop[1,:crosslength], pop[0,:crosslength])
-		return T.reshape(T.concatenate([c1, pop[0, crosslength:], c2, pop[1, crosslength:]]), (n,m))
+		c1 = T.reshape(c1, (2, crosslength))
+		c1 = T.concatenate([c1, pop[[0,1], crosslength:]], axis=1)
+		return T.reshape(c1, (n,m))
 
 	def tournament_selection(self, entities, fitness):
 		"""
