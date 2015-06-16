@@ -165,10 +165,11 @@ class SimpleEA(EA):
 
 		return entities
 		
-	def run(self, generations = 50):
+	def run(self, generations = 50, E=None):
 		log("Compiling...")
 		
-		E = self.initialize_random_population()
+		if E is None:
+			E = self.initialize_random_population()
 
 		n_entities = E.shape[0]
 		n_bits = E.shape[1]
@@ -220,7 +221,7 @@ class SimpleEA(EA):
 			theano.printing.pydotprint(mutate, outfile="mutate.pdf", format="pdf")
 			theano.printing.pydotprint(crossover, outfile="cross.pdf", scan_graphs = True, format="pdf")
 
-		return E.eval(), start, end, i+1
+		return E.eval(), start, end, i+1, F.get_value()
 		
 if __name__ == "__main__":
 
@@ -238,14 +239,14 @@ if __name__ == "__main__":
 	total_iterations = 0
 
 	for i in range(times):
-		entities, start, end, iterations = ea.run(generations = 1500)
+		entities, start, end, iterations,f = ea.run(generations = 1500)
 		total_time += end-start
 		total_iterations += iterations
 
 	avg_time = total_time / float(times)
 	avg_iterations = total_iterations / float(times)
 
-	f = np.max(np.sum(entities, axis=1))
+	f = np.max(f)
 
 	logOK("Done.")
 	log("Device: %s" % theano.config.device)

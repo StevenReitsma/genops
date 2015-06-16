@@ -60,3 +60,9 @@ target/
 *.png
 *.jpg
 *.pdf
+
+# Data folder
+data
+data/*
+*.cnf
+*.csv
