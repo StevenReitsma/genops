@@ -113,9 +113,30 @@ class SimpleEA(EA):
 			xpoints = xpoints.astype('int32')
 			xpoints = xpoints.astype('float32')
 		
-		c1 = choose(xpoints, pop[:,:crosslength])
-		c1 = T.reshape(c1, (2, crosslength))
-		return T.reshape(T.concatenate([c1, pop[:, crosslength:]], axis=1), (n,m))
+		c = choose(xpoints, pop[:,:crosslength])
+		c = T.reshape(c, (2, crosslength))
+		return T.reshape(T.concatenate([c, pop[:, crosslength:]], axis=1), (n,m))
+
+	def cross_cpu(self, entities):
+		n, m = entities.shape
+		pop = T.reshape(entities, (2, n*m/2))
+
+		if self.fast_rng is None:
+			xpoints = self.rng.random_integers(size = (n / 2,), low = 0, high = m-1)
+		else:
+			xpoints = self.fast_rng.uniform(size = (n / 2,), low = 0, high = m-1)
+			xpoints = xpoints.astype('int32')
+		
+		def choice_vector(xpoint, nbits):
+			return T.concatenate([T.zeros((xpoint,), dtype='uint8'), T.ones((nbits-xpoint,), dtype='uint8')])
+		
+		values, updates = theano.map(fn=choice_vector, sequences=[xpoints], non_sequences=[m], name='choice_vector_building')
+		
+		a = T.reshape(values, (n*m/2,))
+		pop = T.concatenate([T.choose(a, pop), T.choose(1-a, pop)])
+		pop = T.reshape(pop, (n,m))
+		return pop
+
 
 	def tournament_selection(self, entities, fitness):
 		"""
@@ -184,7 +205,7 @@ class SimpleEA(EA):
 		fitness_t = self.fitness(E)
 		select_t = self.tournament_selection(E, F)
 		mutate_t = self.fast_mutation(E)
-		crossover_t = self.cross(E)
+		crossover_t = self.cross(E) if 'gpu' in theano.config.device else self.cross_cpu(E)
 
 		# Compile functions
 		fitness = theano.function([], [], updates = [(F, fitness_t)])
@@ -245,8 +266,10 @@ if __name__ == "__main__":
 
 	avg_time = total_time / float(times)
 	avg_iterations = total_iterations / float(times)
+	print f
 
 	f = np.max(f)
+	print entities
 
 	logOK("Done.")
 	log("Device: %s" % theano.config.device)

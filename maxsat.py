@@ -2,6 +2,7 @@ import csv
 import theano.tensor as T
 import theano
 import numpy as np
+import os
 
 class MaxSat():
 	
@@ -14,7 +15,6 @@ class MaxSat():
 				elif line[0] == 'p':
 					self.clauses = np.zeros((int(line[4]), int(line[2])))
 					break
-			print self.clauses.shape
 			for i,line in enumerate(reader):
 				for v in line[:-1]:
 					self.clauses[i, abs(int(v))-1] = 2*('-' in v)-1
@@ -38,18 +38,29 @@ if __name__ == '__main__':
 	import algorithm
 	import sys
 	if len(sys.argv) > 1:
-		filename = 'data/' + sys.argv[1]
+		filenames = ['data/' + sys.argv[1]]
 	else:
-		filename = 'data/s2v120c1400-1.cnf'
+		filenames = ['data/' + f for f in os.listdir('data/') if f[-4:] == '.cnf']
 	
-	ms = MaxSat(filename)
-	print "EXPECTATION: ", ms.answer
-	ncl, npr = ms.clauses.shape
-	ngenes = 1000
-	its    = 10
-	ea = algorithm.SimpleEA(ms.fitness)
-	pop = np.random.randint(2, size = (ngenes, npr)).astype(theano.config.floatX)
-	entities, start, end, iterations, fit = ea.run(generations = its, E=pop)
-	print "TIME: ", end-start
-	print "FITNESS: ", np.max(fit)
-	print "ITS: ", iterations
+	ttime = 0
+	tfit = 0
+	titrs = 0
+	for filename in filenames:
+		ms = MaxSat(filename)
+		print "EXPECTATION: ", ms.answer
+		ncl, npr = ms.clauses.shape
+		ngenes = 1000
+		its    = 10
+		ea = algorithm.SimpleEA(ms.fitness)
+		pop = np.random.randint(2, size = (ngenes, npr)).astype(theano.config.floatX)
+		entities, start, end, iterations, fit = ea.run(generations = its, E=pop)
+		print "TIME: ", end-start
+		print "FITNESS: ", np.max(fit)
+		print "ITS: ", iterations
+		ttime += end-start
+		tfit  += np.max(fit)
+		titrs += iterations
+	n = len(filenames)
+	print "MEAN TIME: ", ttime / n
+	print "MEAN FITNESS: ", tfit / n
+	print "MEAN ITERATIONS: ", titrs / n
