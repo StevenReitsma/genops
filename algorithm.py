@@ -85,7 +85,7 @@ class EA(object):
 		self.crossover_rate = 0.7
 	
 	def initialize_random_population(self):
-		return np.random.randint(2, size = (1000, 1000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
+		return np.random.randint(2, size = (1000, 2000)).astype(theano.config.floatX) # 1000 entities, 1000 bits
 
 class SimpleEA(EA):
 	def __init__(self, fitnessFunction):
@@ -210,7 +210,7 @@ class SimpleEA(EA):
 				log("Fitness: " + str(np.max(F.get_value())))
 
 			# Early stopping
-			if np.max(F.get_value()) == n_entities:
+			if np.max(F.get_value()) == n_bits:
 				break
 
 		end = time.time()
