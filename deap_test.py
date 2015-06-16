@@ -23,7 +23,7 @@ toolbox.register("select", tools.selTournament, tournsize=2)
 population = toolbox.population(n=1000)
 
 start = time.time()
-NGEN=5000
+NGEN=1000
 for gen in range(NGEN):
     offspring = algorithms.varAnd(population, toolbox, cxpb=0.7, mutpb=0.05)
     fits = toolbox.map(toolbox.evaluate, offspring)

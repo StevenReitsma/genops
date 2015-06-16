@@ -13,6 +13,10 @@ import pycuda.autoinit
 import pycuda.driver as cuda_driver
 from pycuda.compiler import SourceModule
 
+import matplotlib.pyplot as plt
+from mpltools import style
+style.use('ggplot')
+
 def logOK(text):
 	print time.strftime('%H:%M:%S') + ": " + '\033[92m' + text + '\033[0m'
 
@@ -191,6 +195,7 @@ class SimpleEA(EA):
 		select = theano.function([], [], updates = [(E, select_t)])
 		mutate = theano.function([], [], updates = [(E, mutate_t)])
 		crossover = theano.function([], [], updates = [(E, crossover_t)])
+		fitnesses = []
 
 		logOK("Compilation successfully completed.")
 		log("Running algorithm...")
@@ -208,6 +213,7 @@ class SimpleEA(EA):
 
 			if theano.config.profile:
 				log("Fitness: " + str(np.max(F.get_value())))
+				fitnesses.append(np.max(F.get_value()))
 
 			# Early stopping
 			if np.max(F.get_value()) == n_bits:
@@ -220,6 +226,10 @@ class SimpleEA(EA):
 			theano.printing.pydotprint(select, outfile="select.pdf", format="pdf")
 			theano.printing.pydotprint(mutate, outfile="mutate.pdf", format="pdf")
 			theano.printing.pydotprint(crossover, outfile="cross.pdf", scan_graphs = True, format="pdf")
+
+			# Plots
+			plt.plot(range(len(fitnesses)), fitnesses, alpha = 0.75)
+			plt.show()
 
 		return E.eval(), start, end, i+1, F.get_value()
 		
