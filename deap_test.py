@@ -9,7 +9,7 @@ creator.create("Individual", list, fitness=creator.FitnessMax)
 toolbox = base.Toolbox()
 
 toolbox.register("attr_bool", random.randint, 0, 1)
-toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n=1000)
+toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_bool, n=2000)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
 def evalOneMax(individual):
@@ -17,13 +17,13 @@ def evalOneMax(individual):
 
 toolbox.register("evaluate", evalOneMax)
 toolbox.register("mate", tools.cxTwoPoint)
-toolbox.register("mutate", tools.mutFlipBit, indpb=0.03)
+toolbox.register("mutate", tools.mutFlipBit, indpb=0.003)
 toolbox.register("select", tools.selTournament, tournsize=2)
 
 population = toolbox.population(n=1000)
 
 start = time.time()
-NGEN=5000
+NGEN=1000
 for gen in range(NGEN):
     offspring = algorithms.varAnd(population, toolbox, cxpb=0.7, mutpb=0.05)
     fits = toolbox.map(toolbox.evaluate, offspring)
